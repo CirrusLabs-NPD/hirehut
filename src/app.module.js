@@ -6,7 +6,7 @@ const jobRoutes = require('./routes/jobs')
 const path = require('path')
 const express = require('express')
 module.exports = function (app) {
-  app.use(express.static(path.join(__dirname, 'build')))
+  // app.use(express.static(path.join(__dirname, 'build')))
   app.use('/api/user', userRoutes)
   app.use('/api/auth', authRoutes)
   app.use('/api/events', eventRoutes)
