@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # app:
+  #   build: .
+  #   container_name: node-express-app
+  #   ports:
+  #     - "8000:8000"   # host:container
+  #   volumes:
+  #     - .:/app        # live code editing
+  #     - /app/node_modules
+  #   environment:
+  #     - NODE_ENV=production
+  #     - MONGO_URI=mongodb://mongo:27017/interview-ai  # used in your app
+  #   depends_on:
+  #     - mongo
+  #   restart: always
+
+  mongo:
+    image: mongo:6
+    container_name: mongo-db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: always
+
+volumes:
+  mongo-data:
