@@ -7,17 +7,14 @@ const path = require('path')
 const express = require('express')
 module.exports = function (app) {
   app.use(express.static(path.join(__dirname, 'build')))
-
-  // Serve index.html for the root route
-  app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'build', 'index.html'))
-  })
-  app.get('/health', (req, res) => {
-    res.send('Healthy')
-  })
   app.use('/api/user', userRoutes)
   app.use('/api/auth', authRoutes)
   app.use('/api/events', eventRoutes)
   app.use('/api/openai', openaiRoutes)
   app.use('/api/jobs', jobRoutes)
+
+  // Catch-all: send index.html for other routes (SPA support)
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'build', 'index.html'))
+  })
 }
