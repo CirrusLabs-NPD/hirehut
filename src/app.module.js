@@ -3,7 +3,15 @@ const authRoutes = require('./routes/auth')
 const eventRoutes = require('./routes/events')
 const openaiRoutes = require('./routes/openai')
 const jobRoutes = require('./routes/jobs')
+const path = require('path')
+const express = require('express')
 module.exports = function (app) {
+  app.use(express.static(path.join(__dirname, 'build')))
+
+  // Serve index.html for the root route
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'build', 'index.html'))
+  })
   app.get('/health', (req, res) => {
     res.send('Healthy')
   })
