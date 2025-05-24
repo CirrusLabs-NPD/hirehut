@@ -14,7 +14,7 @@ module.exports = function (app) {
   app.use('/api/jobs', jobRoutes)
 
   // Catch-all: send index.html for other routes (SPA support)
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'build', 'index.html'))
-  })
+  // app.get('*', (req, res) => {
+  //   res.sendFile(path.join(__dirname, 'build', 'index.html'))
+  // })
 }
