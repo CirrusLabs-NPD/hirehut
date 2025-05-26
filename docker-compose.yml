@@ -26,6 +26,7 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: hirehut
       MONGO_INITDB_ROOT_PASSWORD: Aakash@9897120391
+      MONGO_INITDB_DATABASE: interview-ai
     command: mongod --bind_ip_all --auth
     restart: always
 
