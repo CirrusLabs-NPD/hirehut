@@ -20,9 +20,13 @@ services:
     image: mongo:6
     container_name: mongo-db
     ports:
-      - "27017:27017"
+      - '27017:27017'
     volumes:
       - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: hirehut
+      MONGO_INITDB_ROOT_PASSWORD: Aakash@9897120391
+    command: mongod --bind_ip_all --auth
     restart: always
 
 volumes:
