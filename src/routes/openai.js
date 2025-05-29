@@ -1,10 +1,14 @@
 const express = require('express')
 const router = express.Router()
-
+const multer = require('multer')
+const pdfParse = require('pdf-parse')
+const fs = require('fs/promises')
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const OpenAI = require('openai')
+const Event = require('../models/Event')
 const Job = require('../models/Job')
-
+const User = require('../models/User')
+const { authMiddleware } = require('../middleware/authMiddleware')
 // Create OpenAI instance
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -181,6 +185,326 @@ router.post('/createjob', async (req, res) => {
     res.status(201).json(job)
   } catch (err) {
     res.status(500).json({ error: err.message })
+  }
+})
+
+router.post('/agent', async (req, res) => {
+  const { prompt } = req.body
+  const { userId, username } = req
+  if (!prompt) return res.status(400).json({ error: 'Prompt is required' })
+
+  try {
+    // 1. Ask GPT to identify the schema and generate a query object
+    const schemaChoicePrompt = `
+    You are a backend engineer. Based on the user's prompt, do the following:
+    
+    1. Identify which MongoDB schema the query is about: "Job", "Event", or "User".
+    2. Create a valid MongoDB filter (only the "filter" object, not a full query) that can be used with Mongoose.
+    
+    Consider this context:
+    - The current user's MongoDB _id is: "${userId}"
+    - Their username is: "${username}"
+    - If the user asks for "my jobs", "my events", "jobs I posted", or similar, use filters like { postedBy: ObjectId } or { createdBy: ObjectId }.
+    - If they ask for "meetings I’m in", use { "participants.email": "<their email>" } or "participants.name": "<username>" if email is unavailable.
+    - Respond ONLY with a raw JSON object like:
+    {
+      "schema": "Job" | "Event" | "User",
+      "filter": { ... }
+    }
+    
+    MongoDB Schemas:
+    
+    Job: {
+      title: String,
+      description: String,
+      skills: [String],
+      experience: String,
+      status: Boolean,
+      location: String,
+      salaryRange: { min: Number, max: Number },
+      employmentType: String,
+      postedBy: ObjectId
+    }
+    
+    Event: {
+      title: String,
+      scheduledAt: Date,
+      createdBy: ObjectId,
+      participants: [{ name, email, role }],
+      aiInstructions: String
+    }
+    
+    User: {
+      username: String,
+      email: String
+    }
+    
+    User's Prompt: "${prompt}"
+    `
+
+    const schemaResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: schemaChoicePrompt }],
+      temperature: 0.1,
+    })
+
+    let content = schemaResponse.choices[0].message.content.trim()
+
+    if (content.startsWith('```')) {
+      content = content.replace(/^```(?:json)?\n/, '').replace(/\n```$/, '')
+    }
+
+    const parsed = JSON.parse(content)
+
+    const { schema, filter } = parsed
+
+    let results = []
+
+    // 2. Run the query on the chosen schema
+    if (schema === 'Job') {
+      results = await Job.find(filter).limit(10).lean()
+    } else if (schema === 'Event') {
+      results = await Event.find(filter).limit(10).lean()
+    } else if (schema === 'User') {
+      results = await User.find(filter).limit(10).lean()
+    } else {
+      return res.status(400).json({ error: 'Invalid schema returned from GPT' })
+    }
+
+    // 3. Ask GPT to answer based on those results
+    const finalAnswerPrompt = `
+Use the following MongoDB query result to answer the user's question:
+
+Prompt: "${prompt}"
+Schema: ${schema}
+Results: ${JSON.stringify(results, null, 2)}
+
+Answer the prompt naturally using only the results.
+If no matching data is found, say "No matching data found."
+`
+
+    const finalResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: finalAnswerPrompt }],
+      temperature: 0.3,
+    })
+
+    const answer = finalResponse.choices[0]?.message?.content?.trim()
+    res.json({ answer: answer || 'No response from AI.' })
+  } catch (err) {
+    console.error('Agent error:', err.message)
+    res.status(500).json({ error: 'Agent failed', details: err.message })
+  }
+})
+
+router.post('/agent', async (req, res) => {
+  const { prompt } = req.body
+  const { userId, username } = req
+  if (!prompt) return res.status(400).json({ error: 'Prompt is required' })
+
+  try {
+    // 1. Ask GPT to identify the schema and generate a query object
+    const schemaChoicePrompt = `
+    You are a backend engineer. Based on the user's prompt, do the following:
+    
+    1. Identify which MongoDB schema the query is about: "Job", "Event", or "User".
+    2. Create a valid MongoDB filter (only the "filter" object, not a full query) that can be used with Mongoose.
+    
+    Consider this context:
+    - The current user's MongoDB _id is: "${userId}"
+    - Their username is: "${username}"
+    - If the user asks for "my jobs", "my events", "jobs I posted", or similar, use filters like { postedBy: ObjectId } or { createdBy: ObjectId }.
+    - If they ask for "meetings I’m in", use { "participants.email": "<their email>" } or "participants.name": "<username>" if email is unavailable.
+    - Respond ONLY with a raw JSON object like:
+    {
+      "schema": "Job" | "Event" | "User",
+      "filter": { ... }
+    }
+    
+    MongoDB Schemas:
+    
+    Job: {
+      title: String,
+      description: String,
+      skills: [String],
+      experience: String,
+      status: Boolean,
+      location: String,
+      salaryRange: { min: Number, max: Number },
+      employmentType: String,
+      postedBy: ObjectId
+    }
+    
+    Event: {
+      title: String,
+      scheduledAt: Date,
+      createdBy: ObjectId,
+      participants: [{ name, email, role }],
+      aiInstructions: String
+    }
+    
+    User: {
+      username: String,
+      email: String
+    }
+    
+    User's Prompt: "${prompt}"
+    `
+
+    const schemaResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: schemaChoicePrompt }],
+      temperature: 0.1,
+    })
+
+    let content = schemaResponse.choices[0].message.content.trim()
+
+    if (content.startsWith('```')) {
+      content = content.replace(/^```(?:json)?\n/, '').replace(/\n```$/, '')
+    }
+
+    const parsed = JSON.parse(content)
+
+    const { schema, filter } = parsed
+
+    let results = []
+
+    // 2. Run the query on the chosen schema
+    if (schema === 'Job') {
+      results = await Job.find(filter).limit(10).lean()
+    } else if (schema === 'Event') {
+      results = await Event.find(filter).limit(10).lean()
+    } else if (schema === 'User') {
+      results = await User.find(filter).limit(10).lean()
+    } else {
+      return res.status(400).json({ error: 'Invalid schema returned from GPT' })
+    }
+
+    // 3. Ask GPT to answer based on those results
+    const finalAnswerPrompt = `
+Use the following MongoDB query result to answer the user's question:
+
+Prompt: "${prompt}"
+Schema: ${schema}
+Results: ${JSON.stringify(results, null, 2)}
+
+Answer the prompt naturally using only the results.
+If no matching data is found, say "No matching data found."
+`
+
+    const finalResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: finalAnswerPrompt }],
+      temperature: 0.3,
+    })
+
+    const answer = finalResponse.choices[0]?.message?.content?.trim()
+    res.json({ answer: answer || 'No response from AI.' })
+  } catch (err) {
+    console.error('Agent error:', err.message)
+    res.status(500).json({ error: 'Agent failed', details: err.message })
+  }
+})
+
+const upload = multer({ storage: multer.memoryStorage() })
+
+router.post('/match-resumes', upload.array('resumes'), async (req, res) => {
+  const jobDescription = req.body.jobDescription
+  const files = req.files
+
+  if (!jobDescription || files.length === 0) {
+    return res
+      .status(400)
+      .json({ error: 'Job description and at least one resume are required' })
+  }
+
+  try {
+    // 1. Extract text from each resume
+    const resumeTexts = await Promise.all(
+      files.map(async (file) => {
+        const data = await pdfParse(file.buffer)
+        return {
+          filename: file.originalname,
+          text: data.text,
+        }
+      })
+    )
+
+    // 2. Ask GPT to return JSON with match data
+    const prompt = `
+You are a resume screening engine. Given a job description and multiple resumes, return a structured JSON array with the following fields per resume:
+
+- "name": Full name of the candidate (if not found, use filename)
+- "email": Email found in the resume (if not found, return "Not found")
+- "matchingScore": A number between 0 and 100 based on how well the resume matches the job description.
+- "summary": A 1–2 line summary of the candidate’s profile.
+
+Format your entire response as raw JSON array, like:
+[
+  {
+    "name": "Jane Doe",
+    "email": "jane.doe@example.com",
+    "matchingScore": 87,
+    "summary": "Experienced frontend developer with 5 years in React and UI design."
+  },
+  ...
+]
+
+Job Description:
+${jobDescription}
+
+Resumes:
+${resumeTexts
+  .map(
+    (r, i) =>
+      `Resume ${i + 1} (${r.filename}):\n${r.text.substring(0, 2000)}\n...`
+  )
+  .join('\n\n')}
+    `.trim()
+
+    const matchResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'system', content: prompt }],
+      temperature: 0.2,
+    })
+
+    let raw = matchResponse.choices[0].message.content.trim()
+
+    if (raw.startsWith('```')) {
+      raw = raw.replace(/^```(?:json)?\n/, '').replace(/\n```$/, '')
+    }
+
+    const structuredResult = JSON.parse(raw)
+
+    // Schedule events for high match scores (> 80)
+    const topCandidates = structuredResult.filter((c) => c.matchingScore > 80)
+
+    if (topCandidates.length > 0) {
+      const scheduledAt = new Date()
+      scheduledAt.setDate(scheduledAt.getDate() + 1) // tomorrow
+
+      topCandidates.forEach(async (candid) => {
+        const event = new Event({
+          title: `${candid.name} (AI Interview)`,
+          scheduledAt,
+          createdBy: 'Automation', // If using auth, or hardcode for now
+          participants: [
+            { name: candid.name, email: candid.email, role: 'candidate' },
+          ],
+          aiInstructions: `Use the following job description to interview:\n\n${jobDescription}`,
+          metadata: { candidate: candid },
+        })
+
+        await event.save()
+      })
+    }
+
+    res.json({ matchResults: structuredResult })
+  } catch (err) {
+    console.error('Matching error:', err)
+    res
+      .status(500)
+      .json({ error: 'Failed to process resumes', details: err.message })
   }
 })
 
