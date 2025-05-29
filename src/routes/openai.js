@@ -8,6 +8,7 @@ const OpenAI = require('openai')
 const Event = require('../models/Event')
 const Job = require('../models/Job')
 const User = require('../models/User')
+const { v4: uuidv4 } = require('uuid')
 const { authMiddleware } = require('../middleware/authMiddleware')
 // Create OpenAI instance
 const openai = new OpenAI({
@@ -481,22 +482,38 @@ ${resumeTexts
 
     if (topCandidates.length > 0) {
       const scheduledAt = new Date()
-      scheduledAt.setDate(scheduledAt.getDate() + 1) // tomorrow
+      scheduledAt.setDate(scheduledAt.getDate() + 1) // Schedule for tomorrow
 
-      topCandidates.forEach(async (candid) => {
-        const event = new Event({
-          title: `${candid.name} (AI Interview)`,
-          scheduledAt,
-          createdBy: 'Automation', // If using auth, or hardcode for now
-          participants: [
-            { name: candid.name, email: candid.email, role: 'candidate' },
-          ],
-          aiInstructions: `Use the following job description to interview:\n\n${jobDescription}`,
-          metadata: { candidate: candid },
+      const end = new Date(scheduledAt.getTime() + 30 * 60000) // 30 minutes later
+
+      await Promise.all(
+        topCandidates.map(async (candid) => {
+          try {
+            const event = new Event({
+              title: `${candid.name} (AI Interview)`,
+              scheduledAt,
+              createdBy: '6834af991cdef2ca33698434', // Replace with actual ObjectId if needed
+              participants: [
+                { name: candid.name, email: candid.email, role: 'candidate' },
+              ],
+              aiInstructions: `Use the following job description to interview:\n\n${jobDescription}`,
+              metadata: {
+                candidate: candid,
+                roomId: uuidv4(),
+                start: scheduledAt,
+                end: end,
+                duration: 30,
+                mode: 'AI', // or another default value you use
+              },
+            })
+
+            await event.save()
+            console.log(`Event saved for ${candid.name}`)
+          } catch (err) {
+            console.error(`Error saving event for ${candid.name}:`, err.message)
+          }
         })
-
-        await event.save()
-      })
+      )
     }
 
     res.json({ matchResults: structuredResult })
