@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const Event = require('../models/Event')
+const Transcribe = require('../models/Transcribe')
 const { authMiddleware } = require('../middleware/authMiddleware')
 const { v4: uuidv4 } = require('uuid')
 // Get all events for logged-in user
@@ -90,6 +91,65 @@ router.delete('/:id', async (req, res) => {
     res
       .status(500)
       .json({ message: 'Error deleting event', error: err.message })
+  }
+})
+
+router.post('/store-transcribs', async (req, res) => {
+  const { transcribe, roomId } = req.body
+  console.log('storing')
+  if (!roomId || !transcribe) {
+    return res
+      .status(400)
+      .json({ message: 'roomId and transcribs are required' })
+  }
+
+  try {
+    const existing = await Transcribe.findOne({ roomId })
+
+    if (existing) {
+      // Append new transcribs to existing
+      existing.transcribe += ' ' + transcribe
+      await existing.save()
+      return res
+        .status(200)
+        .json({ message: 'Transcription updated', data: existing })
+    } else {
+      // Create new record
+      const newEntry = new Transcribe({ roomId, transcribe })
+      await newEntry.save()
+      return res
+        .status(201)
+        .json({ message: 'Transcription created', data: newEntry })
+    }
+  } catch (err) {
+    console.error('Error storing transcriptions:', err)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+})
+
+router.get('/transcribs/:roomId', async (req, res) => {
+  const { roomId } = req.params
+  if (!roomId) {
+    return res.status(400).json({ message: 'roomId is required' })
+  }
+
+  try {
+    const existing = await Transcribe.findOne({ roomId })
+
+    if (existing) {
+      return res
+        .status(200)
+        .json({ message: 'Transcription found', data: existing })
+    } else {
+      // Create new record
+
+      return res
+        .status(201)
+        .json({ message: 'Transcription not found', data: null })
+    }
+  } catch (err) {
+    console.error('Error storing transcriptions:', err)
+    res.status(500).json({ message: 'Internal server error' })
   }
 })
 
